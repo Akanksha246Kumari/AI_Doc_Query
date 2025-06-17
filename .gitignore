@@ -1,0 +1,22 @@
+# Model files (large binary files)
+model/
+
+# Environment variables
+.env
+
+# Local data
+data/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+
+# IDE specific files
+.idea/
+.vscode/
+.DS_Store
