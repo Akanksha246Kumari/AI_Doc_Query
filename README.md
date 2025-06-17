@@ -13,31 +13,19 @@ This project implements an offline document query system using Retrieval Augment
 - Answer generation using a local Large Language Model (LLM)
 - Offline operation
 
-# AI-Powered Offline Document Query System
-
-An offline-capable RAG (Retrieval-Augmented Generation) system for querying documents with support for PDF and image files (PNG, JPG, JPEG) using OCR.
-
-## 🚀 Features
-
-- **Document Processing**: Handles PDFs and images with OCR
-- **Offline-First**: All models run locally
-- **RAG Pipeline**: Advanced retrieval and generation
-- **Cross-Encoder Reranking**: Improved result relevance
-- **Local LLM**: Mistral 7B for answer generation
-
 ## 🛠 System Requirements
 
 - Python 3.8+
 - RAM: Minimum 16GB (32GB recommended)
 - Storage: 10GB+ free space
-- OS: Linux/macOS/Windows (Linux recommended)
+- OS: Linux/macOS/Windows 
 
 ## 🚀 Quick Start
 
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/Akanksha246Kumari/AI_Doc_Query.git
-cd AI_Doc_Query
+cd Doc_Query
 ```
 
 ### 2. Install System Dependencies
@@ -91,7 +79,7 @@ Access the web interface at: http://localhost:8501
 ## 🏗 Project Structure
 
 ```
-AI_Doc_Query/
+Doc_Query/
 ├── app.py              # Main Streamlit application
 ├── utils.py           # Core utilities (OCR, text processing)
 ├── requirements.txt   # Python dependencies
@@ -151,20 +139,12 @@ print('✓ All dependencies installed successfully')
    - Close other memory-intensive applications
    - Consider using a machine with more RAM
 
-## 📝 License
-
-[Your License Here]
-
-## 📞 Support
-
-For support, please contact [Your Contact Information]
-    - Make sure to add Tesseract to your system's PATH or update the path in `utils.py` if necessary.
 
 ## Setup
 
 1.  **Clone the Repository (if you haven't already):**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/Akanksha246Kumari/AI_Doc_Query.git
     cd Doc-query
     ```
 
