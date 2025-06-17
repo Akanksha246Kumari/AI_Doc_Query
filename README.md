@@ -13,13 +13,151 @@ This project implements an offline document query system using Retrieval Augment
 - Answer generation using a local Large Language Model (LLM)
 - Offline operation
 
-## Prerequisites
+# AI-Powered Offline Document Query System
 
-Before you begin, ensure you have the following installed on your system:
+An offline-capable RAG (Retrieval-Augmented Generation) system for querying documents with support for PDF and image files (PNG, JPG, JPEG) using OCR.
 
-- **Python 3.8+**: Download from [python.org](https://www.python.org/downloads/)
-- **Tesseract OCR Engine**: This is required for extracting text from images.
-    - Installation instructions: [Tesseract Documentation](https://tesseract-ocr.github.io/tessdoc/Installation.html)
+## 🚀 Features
+
+- **Document Processing**: Handles PDFs and images with OCR
+- **Offline-First**: All models run locally
+- **RAG Pipeline**: Advanced retrieval and generation
+- **Cross-Encoder Reranking**: Improved result relevance
+- **Local LLM**: Mistral 7B for answer generation
+
+## 🛠 System Requirements
+
+- Python 3.8+
+- RAM: Minimum 16GB (32GB recommended)
+- Storage: 10GB+ free space
+- OS: Linux/macOS/Windows (Linux recommended)
+
+## 🚀 Quick Start
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/Akanksha246Kumari/AI_Doc_Query.git
+cd AI_Doc_Query
+```
+
+### 2. Install System Dependencies
+
+#### Ubuntu/Debian
+```bash
+sudo apt update
+sudo apt install -y tesseract-ocr
+```
+
+#### macOS (using Homebrew)
+```bash
+brew install tesseract
+```
+
+#### Windows
+1. Download Tesseract installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
+2. Add Tesseract to your system PATH
+
+### 3. Set Up Python Environment
+```bash
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Python dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Download the Language Model
+
+```bash
+# Create model directory
+mkdir -p model
+
+# Download Mistral 7B model (4.37GB)
+cd model
+wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf
+cd ..
+```
+
+### 5. Run the Application
+
+```bash
+streamlit run app.py
+```
+
+Access the web interface at: http://localhost:8501
+
+## 🏗 Project Structure
+
+```
+AI_Doc_Query/
+├── app.py              # Main Streamlit application
+├── utils.py           # Core utilities (OCR, text processing)
+├── requirements.txt   # Python dependencies
+├── .gitignore         # Git ignore rules
+└── model/             # Local LLM storage (not in git)
+    └── mistral-7b-instruct-v0.2.Q4_K_M.gguf
+```
+
+## 🤖 Usage
+
+1. **Upload Documents**:
+   - Click "Upload Document"
+   - Select PDF, PNG, JPG, or JPEG files
+   - Wait for processing to complete
+
+2. **Query Documents**:
+   - Enter your question in the search box
+   - Click "Search"
+   - View results with source context
+
+## 🔧 Configuration
+
+### Environment Variables
+Create a `.env` file for configuration (optional):
+```env
+# Add any environment-specific settings here
+```
+
+### Model Configuration
+- **Embedding Model**: `sentence-transformers/all-MiniLM-L6-v2`
+- **Reranker**: `cross-encoder/ms-marco-MiniLM-L-6-v2`
+- **LLM**: `mistral-7b-instruct-v0.2.Q4_K_M.gguf`
+
+## 🧪 Testing
+
+### Verify Installation
+```bash
+python -c "
+import streamlit, pytesseract, fitz, PIL, langchain, faiss, ctransformers;
+print('✓ All dependencies installed successfully')
+"
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Model Not Found**
+   - Verify the model is in `model/` directory
+   - Check file permissions
+
+2. **Tesseract OCR Errors**
+   - Ensure Tesseract is installed and in PATH
+   - On Windows, verify the installation path is correct
+
+3. **Memory Issues**
+   - Close other memory-intensive applications
+   - Consider using a machine with more RAM
+
+## 📝 License
+
+[Your License Here]
+
+## 📞 Support
+
+For support, please contact [Your Contact Information]
     - Make sure to add Tesseract to your system's PATH or update the path in `utils.py` if necessary.
 
 ## Setup
