@@ -54,6 +54,19 @@ def extract_text_from_pdf(pdf_path):
         print(f"Error extracting text from PDF {pdf_path}: {e}")
     return text
 
+def clean_text(text):
+    """
+    Cleans the extracted text by removing excessive newlines, fixing hyphenation,
+    and consolidating whitespace.
+    """
+    # Remove hyphenation at the end of lines
+    text = re.sub(r'-\n', '', text)
+    # Replace single newlines with a space
+    text = re.sub(r'\n', ' ', text)
+    # Consolidate multiple spaces into a single space
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
 def process_document(file_path):
     """
     Processes a document (PDF, image) and extracts its text content.
@@ -75,13 +88,16 @@ def process_document(file_path):
         print(f"Unsupported file type: {file_extension}")
         return None
         
-    if text_content.strip() == "OCR_ERROR: Tesseract not found.":
-        # Propagate Tesseract error to UI if possible, or handle appropriately
-        return "Tesseract not found. Please ensure it is installed and in your PATH."
-    elif not text_content.strip():
-        print(f"Warning: No text extracted from {file_path}. The document might be empty or scanned without selectable text (for PDFs).")
+    if "Tesseract not found" in text_content:
+        return text_content
 
-    return text_content
+    # Clean the extracted text to fix spacing and hyphenation issues
+    cleaned_text = clean_text(text_content)
+
+    if not cleaned_text:
+        print(f"Warning: No text extracted from {file_path} after cleaning.")
+
+    return cleaned_text
 
 def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(
