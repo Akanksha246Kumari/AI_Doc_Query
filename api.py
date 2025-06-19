@@ -139,12 +139,11 @@ if __name__ == "__main__":
     print("\nQuery Results:")
     print(f"Status: {result['status']}")
     print(f"Is Knowledge Based: {result['is_knowledge_based']}")
-    print("\nAnswers:")
-    for i, answer in enumerate(result['answers'], 1):
-        print(f"{i}. {answer}")
-        
-    if not result['is_knowledge_based']:
-        print("\nSource Chunks:")
-        for i, chunk in enumerate(result['source_chunks'], 1):
-            print(f"\nSource Chunk {i}:")
-            print(chunk)
+    
+    # Print the formatted output
+    print("\nResponse:")
+    print(result['output'])
+    
+    # Print error message if there was an error
+    if result['status'] == 'error':
+        print(f"\nError: {result.get('message', 'Unknown error')}")
