@@ -81,6 +81,7 @@ Access the web interface at: http://localhost:8501
 ```
 Doc_Query/
 ├── app.py              # Main Streamlit application
+├── api.py             # Programmatic API and command-line interface
 ├── utils.py           # Core utilities (OCR, text processing)
 ├── requirements.txt   # Python dependencies
 ├── .gitignore         # Git ignore rules
@@ -89,6 +90,8 @@ Doc_Query/
 ```
 
 ## 🤖 Usage
+
+### Web Interface
 
 1. **Upload Documents**:
    - Click "Upload Document"
@@ -99,6 +102,46 @@ Doc_Query/
    - Enter your question in the search box
    - Click "Search"
    - View results with source context
+
+### API Usage
+
+The application also provides a simple Python API for programmatic access:
+
+```python
+from api import DocumentQueryWrapper
+
+# Initialize the wrapper
+wrapper = DocumentQueryWrapper()
+
+# Load a document
+wrapper.load_document("path/to/your/document.pdf")  # or .png, .jpg, .jpeg
+
+# Query the document
+response = wrapper.query_document("Your question here")
+
+# The response contains:
+# - answer: The generated answer
+# - source: 'rag' if from document, 'llm' if from model knowledge
+# - context: The source chunk if available
+print(f"Question: {response['user']}")
+print(f"Answer: {response['answer']}")
+if response.get('context'):
+    print(f"\nSource Chunk:\n{response['context']}")
+```
+
+### Command Line Usage
+
+You can also use the provided `api.py` script directly:
+
+```bash
+# Using default document and question
+python3 api.py
+
+# Or specify your own document and question
+python3 api.py --document path/to/your/document.pdf --question "Your question here"
+```
+
+The script will output the question, answer, and source chunk (if available) in a clean format.
 
 ## 🔧 Configuration
 
