@@ -24,7 +24,7 @@ This project implements an offline document query system using Retrieval Augment
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/Akanksha246Kumari/AI_Doc_Query.git
-cd AI_Doc_Query
+cd Doc_Query
 ```
 
 ### 2. Install System Dependencies
