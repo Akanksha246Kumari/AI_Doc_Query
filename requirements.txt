@@ -1,11 +1,26 @@
+# Streamlit UI
 streamlit>=1.30.0
+
+# OCR & Imaging
 pytesseract==0.3.13
 Pillow>=11.2.1
+
+# PDF parsing
 PyMuPDF==1.26.1
+
+# Embeddings & Reranking
 sentence-transformers>=2.2.2
+
+# Vector store
 faiss-cpu==1.7.4
+
+# Local LLM inference
 ctransformers==0.2.27
+
+# LangChain wrappers
 langchain>=0.1.0
 langchain-community>=0.0.19
+
+# Utilities
 python-dotenv==1.0.1
 numpy>=1.24.0
