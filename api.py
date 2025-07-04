@@ -1,145 +1,153 @@
 import os
-import re
-import logging
+import json
 import numpy as np
-from typing import Dict
-from pathlib import Path
+import warnings
+import logging
+from dotenv import load_dotenv
+from utils import process_document, get_text_chunks_with_meta
 from langchain_community.vectorstores.faiss import FAISS, DistanceStrategy
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from sentence_transformers import CrossEncoder
+from langchain_community.llms import CTransformers
 from langchain.schema import Document
-from new_utils import process_document, get_text_chunks_with_meta
 
-# Suppress logs
-logging.basicConfig(level=logging.CRITICAL)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.CRITICAL)
 
-# Constants
+# Suppress all Streamlit "missing ScriptRunContext" warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Thread 'MainThread': missing ScriptRunContext!.*",
+    module="streamlit.runtime.scriptrunner_utils",
+)
+
+# Suppress the 'streamlit' logging module as well
+logging.getLogger("streamlit").setLevel(logging.ERROR)
+
+
+# --- Suppress noisy logs and warnings ---
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["STREAMLIT_SUPPRESS_LOGS"] = "1"
+warnings.filterwarnings("ignore")
+
+for noisy in [
+    "streamlit", "streamlit.runtime", "streamlit.runtime.scriptrunner_utils",
+    "transformers", "langchain", "urllib3"
+]:
+    logging.getLogger(noisy).setLevel(logging.CRITICAL)
+
+load_dotenv()
+
 UPLOAD_DIR = "data/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+VECTOR_STORE_DIR = "data/vector_store"
+EMBEDDING_MODEL_PATH = "model/bge-base-en-v1.5"
+CROSS_ENCODER_MODEL_PATH = "model/cross-encoder_ms-marco-MiniLM-L-12-v2"
+LOCAL_LLM_MODEL_PATH = "model/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 
-EMBEDDING_MODEL     = "sentence-transformers/all-MiniLM-L6-v2"
-CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-LLM_MODEL_PATH      = "model/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+# Ask your query here
+query = "What is this document about?"
 
-SELECTION_THRESHOLD = 0.6  # choose RAG when score ≥ 60%
-DISPLAY_THRESHOLD   = 0.7  # show chunk/relevance when score ≥ 70%
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
-class DocumentQueryWrapper:
-    def __init__(self):
-        self.embedding = None
-        self.reranker  = None
-        self.llm       = None
-        self.vs        = None
-        self._init_models()
+def min_max_norm(arr):
+    if arr is None or len(arr) == 0:
+        return []
+    arr = np.array(arr)
+    min_val = np.min(arr)
+    max_val = np.max(arr)
+    if min_val == max_val:
+        return np.ones_like(arr)
+    return (arr - min_val) / (max_val - min_val)
 
-    def _init_models(self):
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-        from sentence_transformers import CrossEncoder
-        from langchain_community.llms import CTransformers
+def clamp_score(score):
+    return float(max(0.0, min(1.0, score)))
 
-        self.embedding = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-        self.reranker  = CrossEncoder(CROSS_ENCODER_MODEL)
-        self.llm       = CTransformers(
-            model=LLM_MODEL_PATH,
-            model_type="mistral",
-            config={'max_new_tokens':256,'temperature':0.01,'context_length':4096}
-        )
+def format_as_bullet_points(text):
+    lines = text.split("\n")
+    bullets = [f"- {line.strip()}" for line in lines if line.strip()]
+    return "\n".join(bullets)
 
-    def _sigmoid(self, x: float) -> float:
-        return 1.0 / (1.0 + np.exp(-x))
+def run_rag_pipeline(query):
+    from utils import ensure_models_downloaded, get_embedding_model, get_reranker_model, get_llm
+    ensure_models_downloaded()
 
-    def load_document(self, path: str) -> bool:
-        if not os.path.exists(path):
-            return False
-        text = process_document(path)
-        chunks = get_text_chunks_with_meta(text, Path(path).name)
-        docs = [Document(page_content=c["text"], metadata={"filename": c["filename"], "chunk_id": c["chunk_id"]}) for c in chunks]
-        self.vs = FAISS.from_documents(
-            docs, self.embedding, distance_strategy=DistanceStrategy.COSINE
-        )
-        return True
+    vs = FAISS.load_local(
+        VECTOR_STORE_DIR,
+        embeddings=get_embedding_model(),
+        distance_strategy=DistanceStrategy.COSINE,
+        allow_dangerous_deserialization=True
+    )
 
-    def query_document(self, query: str) -> Dict:
-        if self.vs is None:
-            return {
-                "user":     query,
-                "answer":   "No document loaded.",
-                "source":   "llm",
-                "context":  None,
-                "score":    0.0,
-                "filename": ""
-            }
+    results = vs.similarity_search_with_score(query, k=10)
+    reranker = get_reranker_model()
+    pairs = [[query, doc.page_content] for doc, _ in results]
+    rerank_scores_raw = reranker.predict(pairs)
+    sim_scores_raw = [1 - dist for _, dist in results]
 
-        hits = self.vs.similarity_search_with_score(query, k=5)
-        pairs = [[query, doc.page_content] for doc,_ in hits]
-        rerank_raw = self.reranker.predict(pairs)
+    sim_scores_norm = min_max_norm(sim_scores_raw)
+    rerank_scores_norm = min_max_norm(rerank_scores_raw)
 
-        scored = []
-        for (doc, dist), raw in zip(hits, rerank_raw):
-            sim        = 1.0 - dist
-            rerank_sim = self._sigmoid(raw) if not np.isnan(raw) else 0.0
-            combined   = 0.3 * sim + 0.7 * rerank_sim
-            scored.append((doc, combined))
+    scored = []
+    for i, (doc, _) in enumerate(results):
+        combined = 0.5 * sim_scores_norm[i] + 0.5 * rerank_scores_norm[i]
+        scored.append((doc, combined))
 
-        scored.sort(key=lambda x: x[1], reverse=True)
-        top_doc = scored[0][0]
-        top_score = max(0.0, min(1.0, scored[0][1]))
-        context = "\n\n".join([doc.page_content for doc, _ in scored])
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top_5_chunks = [(doc, clamp_score(score)) for doc, score in scored[:5] if score >= 0.3]
 
-        prompt = (
-            f"You are a helpful assistant. Use only the context provided below to answer the user's question. "
-            f"Do not invent new questions or answers. Only respond to the user’s question using a clear, friendly tone. "
-            f"Structure the answer with bullet points or short paragraphs for easy reading.\n\n"
-            f"Context:\n{top_doc.page_content}\n\n"
-            f"Question:\n{query}\n\n"
-            f"Answer:"
-        )
-
-        if top_score >= SELECTION_THRESHOLD:
-            final = self.llm(prompt).strip()
-            source = "rag"
-        else:
-            final = self.llm(f"Answer truthfully:\nQ: {query}\nA:").strip()
-            source = "llm"
-            context = None
-
-        return {
-            "user":     query,
-            "answer":   final,
-            "source":   source,
-            "context":  context,
-            "score":    top_score,
-            "filename": top_doc.metadata.get("filename", "")
+    all_chunks = [
+        {
+            "chunk": doc.page_content,
+            "score": score,
+            "filename": doc.metadata.get("filename", "unknown"),
+            "chunk_id": doc.metadata.get("chunk_id", "na")
         }
-
-def format_chat_message(resp: Dict) -> str:
-    lines = [
-        f"**User:**\n{resp['user']}\n\n",
-        f"**Assistant:**\n{resp['answer']}\n"
+        for doc, score in top_5_chunks
     ]
+    rag_context = "\n\n".join([doc.page_content for doc, _ in top_5_chunks])
+    rag_context_bullets = format_as_bullet_points(rag_context)
 
-    if resp["source"] == "rag" and resp["score"] >= DISPLAY_THRESHOLD:
-        pct = f"{resp['score']*100:.1f}%"
-        lines += [
-            "\n<details><summary>View Source chunk (" + resp["filename"] + ")</summary>\n",
-            "```\n" + resp["context"] + "\n```\n",
-            "</details>\n",
-            f"\nRelevance: {pct}\n"
-        ]
-    else:
-        lines.append("\n*Answer generated from model’s general knowledge*\n")
+    llm = get_llm(LOCAL_LLM_MODEL_PATH)
 
-    return "".join(lines)
+    llm_answer = llm(
+        f"You are a helpful assistant. Without using any document context, answer the following question in bullet points:\n\n"
+        f"Question:\n{query}\n\nAnswer:"
+    ).strip()
+
+    rag_answer = llm(
+        f"You are a precise assistant. Based ONLY on the context provided, directly answer the user’s question."
+        f" Format the answer in bullet points. Do NOT generate new questions or rephrase the input. If the answer is not found, say 'Not found in context.'\n\n"
+        f"Context:\n{rag_context_bullets}\n\nQuestion:\n{query}\n\nAnswer:"
+    ).strip()
+
+    final_decision = llm(
+        f"You are an intelligent assistant. Choose the better answer to the user's question based on accuracy and context.\n\n"
+        f"Question:\n{query}\n\n"
+        f"Answer 1 (from document context):\n{rag_answer}\n\n"
+        f"Answer 2 (from general model knowledge):\n{llm_answer}\n\n"
+        f"Only reply with 'Answer 1' or 'Answer 2'."
+    ).strip()
+
+    show_rag_chunks = final_decision.lower().startswith("answer 1")
+    final_answer = rag_answer if show_rag_chunks else llm_answer
+
+    return {
+        "query": query,
+        "answer": final_answer,
+        "source_chunks": all_chunks if show_rag_chunks else [],
+        "used_rag": show_rag_chunks
+    }
 
 if __name__ == "__main__":
-    DOC_PATH = "data/uploads/1706.03762v7.pdf"
-    QUERY    = "what is self attention?"
+    result = run_rag_pipeline(query)
 
-    wrapper = DocumentQueryWrapper()
-    if not wrapper.load_document(DOC_PATH):
-        print(f"Error: failed to load {DOC_PATH}")
-        exit(1)
+    print(f"\nUSER:\n{result['query']}\n")
+    print(f"ASSISTANT:\n{result['answer']}\n")
 
-    resp   = wrapper.query_document(QUERY)
-    output = format_chat_message(resp)
-    print(output)
+    if result.get("used_rag") and result.get("source_chunks"):
+        print("SOURCE CHUNKS:\n")
+        for i, chunk_info in enumerate(result["source_chunks"], 1):
+            print(f"Chunk {i} ({chunk_info['filename']}):")
+            print(chunk_info["chunk"])
+            print(f"Relevance Score: {chunk_info['score'] * 100:.1f}%\n")
+    else:
+        print("→ Answer generated from model’s general knowledge.\n")
