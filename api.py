@@ -4,35 +4,23 @@ import numpy as np
 import warnings
 import logging
 from dotenv import load_dotenv
-from utils import process_document, get_text_chunks_with_meta
+from utils import (
+    ensure_models_downloaded,
+    get_embedding_model,
+    get_reranker_model,
+    get_llm,
+    process_document,
+    get_text_chunks_with_meta
+)
 from langchain_community.vectorstores.faiss import FAISS, DistanceStrategy
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from sentence_transformers import CrossEncoder
-from langchain_community.llms import CTransformers
 from langchain.schema import Document
 
-
-# Suppress all Streamlit "missing ScriptRunContext" warnings
-warnings.filterwarnings(
-    "ignore",
-    message="Thread 'MainThread': missing ScriptRunContext!.*",
-    module="streamlit.runtime.scriptrunner_utils",
-)
-
-# Suppress the 'streamlit' logging module as well
-logging.getLogger("streamlit").setLevel(logging.ERROR)
-
-
-# --- Suppress noisy logs and warnings ---
+# ---- Config & Suppressions ----
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["STREAMLIT_SUPPRESS_LOGS"] = "1"
 warnings.filterwarnings("ignore")
-
-for noisy in [
-    "streamlit", "streamlit.runtime", "streamlit.runtime.scriptrunner_utils",
-    "transformers", "langchain", "urllib3"
-]:
-    logging.getLogger(noisy).setLevel(logging.CRITICAL)
+for name in ["streamlit", "transformers", "urllib3", "langchain"]:
+    logging.getLogger(name).setLevel(logging.CRITICAL)
 
 load_dotenv()
 
@@ -42,9 +30,8 @@ EMBEDDING_MODEL_PATH = "model/bge-base-en-v1.5"
 CROSS_ENCODER_MODEL_PATH = "model/cross-encoder_ms-marco-MiniLM-L-12-v2"
 LOCAL_LLM_MODEL_PATH = "model/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 
-# Ask your query here
-query = "What is this document about?"
 
+# ---- Utility Functions ----
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
@@ -66,17 +53,30 @@ def format_as_bullet_points(text):
     bullets = [f"- {line.strip()}" for line in lines if line.strip()]
     return "\n".join(bullets)
 
-def run_rag_pipeline(query):
-    from utils import ensure_models_downloaded, get_embedding_model, get_reranker_model, get_llm
+
+# ---- Core Wrapper ----
+def ask_question_from_pdf(pdf_path, query):
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
+
+    # ✅ Download model if not already in /model/
     ensure_models_downloaded()
 
-    vs = FAISS.load_local(
-        VECTOR_STORE_DIR,
-        embeddings=get_embedding_model(),
-        distance_strategy=DistanceStrategy.COSINE,
-        allow_dangerous_deserialization=True
-    )
+    # ✅ Extract and chunk text
+    raw = process_document(pdf_path)
+    filename = os.path.basename(pdf_path)
+    chunks = get_text_chunks_with_meta(raw, filename)
 
+    docs = [
+        Document(page_content=c["text"], metadata={"filename": c["filename"], "chunk_id": c["chunk_id"]})
+        for c in chunks
+    ]
+
+    # ✅ Build or load vectorstore
+    vs = FAISS.from_documents(docs, get_embedding_model(), distance_strategy=DistanceStrategy.COSINE)
+    vs.save_local(VECTOR_STORE_DIR)
+
+    # ✅ Similarity + Rerank
     results = vs.similarity_search_with_score(query, k=10)
     reranker = get_reranker_model()
     pairs = [[query, doc.page_content] for doc, _ in results]
@@ -137,8 +137,12 @@ def run_rag_pipeline(query):
         "used_rag": show_rag_chunks
     }
 
+
+# ---- For CLI test only ----
 if __name__ == "__main__":
-    result = run_rag_pipeline(query)
+    pdf_path = "/Users/akankshakumari/Desktop/Doc-query/data/uploads/Shreeya_Srinath_Feedback.pdf"  # Change as needed
+    query = "What is this document about?"
+    result = ask_question_from_pdf(pdf_path, query)
 
     print(f"\nUSER:\n{result['query']}\n")
     print(f"ASSISTANT:\n{result['answer']}\n")

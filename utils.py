@@ -31,17 +31,22 @@ def clamp_score(score):
 
 # ✅ Model downloader
 def ensure_models_downloaded():
+    # ✅ BGE Embedding Model
     if not os.path.exists(EMBEDDING_MODEL_PATH):
         st.info("⏬ Downloading BGE Embedding Model...")
         model = SentenceTransformer("BAAI/bge-base-en-v1.5")
         model.save(EMBEDDING_MODEL_PATH)
 
+    # ✅ Cross Encoder Reranker Model
     if not os.path.exists(CROSS_ENCODER_MODEL_PATH):
         st.info("⏬ Downloading Cross Encoder Reranker...")
-        model = AutoModel.from_pretrained("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        tokenizer = AutoTokenizer.from_pretrained("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        model = AutoModel.from_pretrained("cross-encoder/ms-marco-MiniLM-L-12-v2", local_files_only=False)
+        tokenizer = AutoTokenizer.from_pretrained("cross-encoder/ms-marco-MiniLM-L-12-v2", local_files_only=False)
+        
+        os.makedirs(CROSS_ENCODER_MODEL_PATH, exist_ok=True)
         model.save_pretrained(CROSS_ENCODER_MODEL_PATH)
         tokenizer.save_pretrained(CROSS_ENCODER_MODEL_PATH)
+
 
 # ✅ Streamlit cached models
 @st.cache_resource
