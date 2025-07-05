@@ -3,6 +3,7 @@ import json
 import numpy as np
 import warnings
 import logging
+import subprocess
 from dotenv import load_dotenv
 from utils import (
     ensure_models_downloaded,
@@ -23,6 +24,12 @@ for name in ["streamlit", "transformers", "urllib3", "langchain"]:
     logging.getLogger(name).setLevel(logging.CRITICAL)
 
 load_dotenv()
+
+# ✅ Set Hugging Face cache path
+HF_CACHE_DIR = os.path.abspath("model/.cache/huggingface")
+os.environ["HF_HOME"] = HF_CACHE_DIR
+os.environ["TRANSFORMERS_CACHE"] = HF_CACHE_DIR
+os.makedirs(HF_CACHE_DIR, exist_ok=True)
 
 UPLOAD_DIR = "data/uploads"
 VECTOR_STORE_DIR = "data/vector_store"
@@ -54,15 +61,41 @@ def format_as_bullet_points(text):
     return "\n".join(bullets)
 
 
+# ---- Auto Download (Only for BGE & Cross-Encoder) ----
+def ensure_models_downloaded():
+    os.makedirs("model", exist_ok=True)
+
+    if not os.path.exists(EMBEDDING_MODEL_PATH):
+        print("⏬ Downloading BGE model...")
+        subprocess.run([
+            "git", "clone",
+            "https://huggingface.co/BAAI/bge-base-en-v1.5",
+            EMBEDDING_MODEL_PATH
+        ])
+        print("✅ BGE model ready.")
+
+    if not os.path.exists(CROSS_ENCODER_MODEL_PATH):
+        print("⏬ Downloading Cross-Encoder model...")
+        subprocess.run([
+            "git", "clone",
+            "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-12-v2",
+            CROSS_ENCODER_MODEL_PATH
+        ])
+        print("✅ Cross-Encoder model ready.")
+
+    if not os.path.exists(LOCAL_LLM_MODEL_PATH):
+        print("❗ Mistral model file missing.")
+        print(f"Please manually place: {LOCAL_LLM_MODEL_PATH}")
+        exit(1)
+
+
 # ---- Core Wrapper ----
 def ask_question_from_pdf(pdf_path, query):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(VECTOR_STORE_DIR, exist_ok=True)
 
-    # ✅ Download model if not already in /model/
     ensure_models_downloaded()
 
-    # ✅ Extract and chunk text
     raw = process_document(pdf_path)
     filename = os.path.basename(pdf_path)
     chunks = get_text_chunks_with_meta(raw, filename)
@@ -72,11 +105,9 @@ def ask_question_from_pdf(pdf_path, query):
         for c in chunks
     ]
 
-    # ✅ Build or load vectorstore
     vs = FAISS.from_documents(docs, get_embedding_model(), distance_strategy=DistanceStrategy.COSINE)
     vs.save_local(VECTOR_STORE_DIR)
 
-    # ✅ Similarity + Rerank
     results = vs.similarity_search_with_score(query, k=10)
     reranker = get_reranker_model()
     pairs = [[query, doc.page_content] for doc, _ in results]
@@ -138,9 +169,9 @@ def ask_question_from_pdf(pdf_path, query):
     }
 
 
-# ---- For CLI test only ----
+# ---- CLI Debug/Test ----
 if __name__ == "__main__":
-    pdf_path = "/Users/akankshakumari/Desktop/Doc-query/data/uploads/Shreeya_Srinath_Feedback.pdf"  # Change as needed
+    pdf_path = "data/uploads/Shreeya_Srinath_Feedback.pdf"
     query = "What is this document about?"
     result = ask_question_from_pdf(pdf_path, query)
 
